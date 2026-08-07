@@ -1,0 +1,44 @@
+{
+  "rss_feeds": [
+    {
+      "url": "https://g1.globo.com/rss/g1/economia/",
+      "name": "G1 Economia",
+      "category": "Economia"
+    },
+    {
+      "url": "https://g1.globo.com/rss/g1/politica/",
+      "name": "G1 Política",
+      "category": "Política"
+    },
+    {
+      "url": "https://www.canalrural.com.br/feed/",
+      "name": "Canal Rural",
+      "category": "Agronegócio"
+    },
+    {
+      "url": "https://www.noticiasagricolas.com.br/rss.php",
+      "name": "Notícias Agrícolas",
+      "category": "Agronegócio"
+    },
+    {
+      "url": "https://g1.globo.com/rss/g1/ciencia-e-saude/",
+      "name": "G1 Ciência",
+      "category": "Ciência"
+    },
+    {
+      "url": "https://g1.globo.com/rss/g1/tecnologia/",
+      "name": "G1 Tecnologia",
+      "category": "Tecnologia"
+    }
+  ],
+  "export_path": "C:\\\\GC\\\\crawl\\\\noticias_crawl.txt",
+  "commodity_mode": "auto",
+  "manual_quotes": {},
+  "active_categories": [
+    "Economia",
+    "Política",
+    "Agronegócio",
+    "Ciência",
+    "Tecnologia"
+  ]
+}
