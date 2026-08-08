@@ -31,18 +31,33 @@ def get_base_path():
 
 BASE_PATH = get_base_path()
 
-app = Flask(__name__, static_folder=BASE_PATH, template_folder=BASE_PATH)
-app.config['SECRET_KEY'] = 'crawl-tv-evangelizar-secret-key'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# DATA_DIR: pasta onde config/histórico são salvos. Por padrão é a pasta do app
+# (que no Render é recriada a cada deploy). Se um Persistent Disk for anexado
+# no Render, defina a variável de ambiente DATA_DIR apontando pro mount point
+# (ex: /var/data) para que config e histórico sobrevivam a deploys/restarts.
+DATA_DIR = os.environ.get('DATA_DIR', BASE_PATH)
+os.makedirs(DATA_DIR, exist_ok=True)
 
-CONFIG_FILE = 'config.json'
-HISTORY_FILE = 'quotes_history.json'
+app = Flask(__name__, static_folder=BASE_PATH, template_folder=BASE_PATH)
+# SECRET_KEY: em produção defina a variável de ambiente SECRET_KEY no Render.
+# Se não for definida, usa um valor padrão (ok para uso local/teste).
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'crawl-tv-evangelizar-secret-key')
+# CORS_ALLOWED_ORIGINS: por padrão libera geral ("*"). Se quiser restringir,
+# defina essa variável de ambiente com a URL do seu serviço no Render.
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '*')
+socketio = SocketIO(app, cors_allowed_origins=CORS_ALLOWED_ORIGINS, async_mode='eventlet')
+
+CONFIG_FILE = os.path.join(DATA_DIR, 'config.json')
+HISTORY_FILE = os.path.join(DATA_DIR, 'quotes_history.json')
+EXPORT_LOG_FILE = os.path.join(DATA_DIR, 'export_log.json')
+MAX_EXPORT_LOG = 50
 
 # Estado compartilhado em memória (sincronizado entre todos os clientes)
 shared_state = {
     "approved": [],      # lista ordenada de títulos aprovados
     "rejected": set(),   # conjunto de títulos rejeitados
-    "quotes": []         # cotações atuais
+    "quotes": [],        # cotações atuais
+    "connected_users": 0 # quantidade de clientes conectados agora
 }
 
 DEFAULT_CONFIG = {
@@ -81,6 +96,16 @@ def load_history():
 
 def save_history(history):
     save_json(HISTORY_FILE, history)
+
+def load_export_log():
+    return load_json(EXPORT_LOG_FILE, [])
+
+def add_export_log_entry(entry):
+    log = load_export_log()
+    log.insert(0, entry)
+    log = log[:MAX_EXPORT_LOG]
+    save_json(EXPORT_LOG_FILE, log)
+    return log
 
 def get_currency_quotes():
     quotes = []
@@ -195,6 +220,34 @@ def get_commodity_quotes():
 def index():
     return send_file(os.path.join(BASE_PATH, 'index.html'))
 
+@app.route('/health')
+def health():
+    """Endpoint simples para monitoramento externo (UptimeRobot, healthcheck do Render, etc.)"""
+    return jsonify({"status": "ok", "time": datetime.now().isoformat()}), 200
+
+@app.route('/api/test-feed')
+def test_feed():
+    """Testa uma URL de feed RSS sem precisar salvar nas configurações."""
+    url = request.args.get('url', '').strip()
+    if not url:
+        return jsonify({"status": "error", "message": "Informe a URL do feed"}), 200
+    try:
+        feed = feedparser.parse(url)
+        if not feed.entries:
+            reason = "Feed vazio ou URL inválida"
+            if getattr(feed, 'bozo', False):
+                reason = f"Erro ao interpretar o feed: {feed.get('bozo_exception', reason)}"
+            return jsonify({"status": "error", "message": reason}), 200
+        sample = [e.get('title', '').strip() for e in feed.entries[:3] if e.get('title')]
+        return jsonify({
+            "status": "ok",
+            "count": len(feed.entries),
+            "feed_title": feed.feed.get('title', ''),
+            "sample": sample
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 200
+
 @app.route('/api/config', methods=['GET', 'POST'])
 def config_route():
     if request.method == 'POST':
@@ -264,10 +317,19 @@ def export():
     news_line = ' '.join(news_parts)
     content = (q_line + ' • ' + news_line).upper()
     errors = []
+    def log_export(final_path, warning=None):
+        add_export_log_entry({
+            "date": datetime.now().isoformat(),
+            "path": final_path,
+            "news_count": len(approved_news),
+            "preview": content[:200],
+            "warning": warning
+        })
     try:
         dir_path = os.path.dirname(path)
         if dir_path: os.makedirs(dir_path, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f: f.write(content)
+        log_export(path)
         return jsonify({"status": "ok", "path": path, "content": content})
     except PermissionError as e:
         errors.append(f"Sem permissão: {path}")
@@ -275,15 +337,23 @@ def export():
     try:
         fallback_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.path.basename(path))
         with open(fallback_path, 'w', encoding='utf-8') as f: f.write(content)
-        return jsonify({"status": "ok", "path": fallback_path, "content": content, "warning": f"Salvo na pasta do programa. Não foi possível salvar em: {path}"})
+        warning = f"Salvo na pasta do programa. Não foi possível salvar em: {path}"
+        log_export(fallback_path, warning)
+        return jsonify({"status": "ok", "path": fallback_path, "content": content, "warning": warning})
     except Exception as e: errors.append(str(e))
     try:
         import tempfile
         temp_path = os.path.join(tempfile.gettempdir(), os.path.basename(path))
         with open(temp_path, 'w', encoding='utf-8') as f: f.write(content)
-        return jsonify({"status": "ok", "path": temp_path, "content": content, "warning": f"Salvo na pasta temporária. Não foi possível salvar em: {path}"})
+        warning = f"Salvo na pasta temporária. Não foi possível salvar em: {path}"
+        log_export(temp_path, warning)
+        return jsonify({"status": "ok", "path": temp_path, "content": content, "warning": warning})
     except Exception as e: errors.append(str(e))
     return jsonify({"status": "fallback", "message": "Não foi possível salvar. Use o botão Baixar.", "content": content, "errors": errors}), 200
+
+@app.route('/api/export-log')
+def export_log():
+    return jsonify(load_export_log())
 
 @app.route('/api/save-quotes', methods=['POST'])
 def save_quotes():
@@ -299,15 +369,21 @@ def save_quotes():
 @socketio.on('connect')
 def handle_connect():
     print(f'Cliente conectado: {request.sid}')
+    shared_state["connected_users"] += 1
     # Envia estado atual para o novo cliente
     emit('sync_state', {
         "approved": shared_state["approved"],
-        "rejected": list(shared_state["rejected"])
+        "rejected": list(shared_state["rejected"]),
+        "connected_users": shared_state["connected_users"]
     })
+    # Avisa todo mundo que a contagem de usuários mudou
+    emit('user_count', {"connected_users": shared_state["connected_users"]}, broadcast=True)
 
 @socketio.on('disconnect')
 def handle_disconnect():
     print(f'Cliente desconectado: {request.sid}')
+    shared_state["connected_users"] = max(0, shared_state["connected_users"] - 1)
+    emit('user_count', {"connected_users": shared_state["connected_users"]}, broadcast=True)
 
 @socketio.on('approve_item')
 def handle_approve(data):
