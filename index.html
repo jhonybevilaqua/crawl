@@ -561,20 +561,24 @@
         approvedStore.delete(title);
         rejectedStore.delete(title);
         n.status = 'pending';
+        emitIfOnline('remove_item', {title});
       } else {
         approvedStore.add(title);
         rejectedStore.delete(title);
         n.status = 'approved';
+        emitIfOnline('approve_item', {title});
       }
     } else if (status === 'rejected') {
       if (rejectedStore.has(title)) {
         rejectedStore.delete(title);
         approvedStore.delete(title);
         n.status = 'pending';
+        emitIfOnline('remove_item', {title});
       } else {
         rejectedStore.add(title);
         approvedStore.delete(title);
         n.status = 'rejected';
+        emitIfOnline('reject_item', {title});
       }
     }
     saveStorage();
