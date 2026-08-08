@@ -124,7 +124,10 @@
 <div class="container">
   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
     <h1 style="font-size:22px; font-weight:600;">CRAWL TV EVANGELIZAR</h1>
-    <span id="lastUpdate" style="font-size:12px; color:#999;">Atualizado: --</span>
+    <div style="text-align:right;">
+      <span id="userCount" style="font-size:12px; color:#999; display:block;">🟢 -- usuários conectados</span>
+      <span id="lastUpdate" style="font-size:12px; color:#999;">Atualizado: --</span>
+    </div>
   </div>
 
   <div class="tabs">
@@ -168,6 +171,7 @@
         <input type="text" id="quickFeedUrl" placeholder="URL do feed RSS" style="flex:2;">
         <input type="text" id="quickFeedName" placeholder="Nome" style="flex:1;">
         <input type="text" id="quickFeedCat" placeholder="Categoria" style="flex:1;" value="Economia">
+        <button class="btn" onclick="testFeed('quickFeedUrl')" title="Testa se a URL retorna notícias antes de adicionar">Testar feed</button>
         <button class="btn btn-primary" onclick="quickAddFeed()">+ Adicionar feed</button>
       </div>
 
@@ -209,10 +213,26 @@
         <button class="btn btn-primary" onclick="exportFile()">Exportar TXT</button>
         <button class="btn" onclick="downloadFile()" title="Baixa o arquivo pelo navegador">⬇ Baixar</button>
       </div>
+      <div style="margin-top:10px; font-size:12px; color:#999;">
+        <span class="auto-refresh">
+          <input type="checkbox" id="autoExportEnabled" onchange="toggleAutoExport()">
+          <label for="autoExportEnabled">Auto-exportar a cada</label>
+        </span>
+        <select id="autoExportMinutes" onchange="toggleAutoExport()" style="margin-left:4px;">
+          <option value="1">1 min</option>
+          <option value="5" selected>5 min</option>
+          <option value="10">10 min</option>
+          <option value="30">30 min</option>
+        </select>
+      </div>
       <div id="exportWarning" style="display:none; margin-top:10px; padding:10px 14px; border-radius:8px; background:#fef3c7; border:1px solid #fbbf24; color:#92400e; font-size:13px;"></div>
       <div style="font-size:13px; color:#666; margin-top:12px; margin-bottom:8px;">Preview do arquivo gerado:</div>
       <div class="preview-box" id="preview">(NENHUMA NOTÍCIA APROVADA AINDA)</div>
       <div class="char-counter" id="charCounter"></div>
+      <div style="margin-top:16px;">
+        <button class="btn" onclick="toggleExportLog()" id="exportLogToggle">📜 Ver histórico de exportações</button>
+        <div id="exportLogPanel" style="display:none; margin-top:10px; max-height:220px; overflow-y:auto; border:1px solid #e5e5e5; border-radius:8px;"></div>
+      </div>
     </div>
   </div>
 
@@ -225,6 +245,7 @@
         <input type="text" id="newFeedUrl" placeholder="URL do feed RSS">
         <input type="text" id="newFeedName" placeholder="Nome" style="flex:.3;">
         <input type="text" id="newFeedCat" placeholder="Categoria" style="flex:.2;" value="Economia">
+        <button class="btn" onclick="testFeed('newFeedUrl')" title="Testa se a URL retorna notícias antes de adicionar">Testar</button>
         <button class="btn btn-primary" onclick="addFeed()">Adicionar</button>
       </div>
       <button class="btn" style="margin-top:8px;" onclick="saveFeeds()">Salvar feeds</button>
@@ -330,6 +351,7 @@
         updateApprovedList();
         updateStats();
         updatePreview();
+        if (typeof data.connected_users === 'number') updateUserCount(data.connected_users);
       });
 
       // Recebe atualizações em tempo real de outros usuários
@@ -345,10 +367,22 @@
         saveStorage();
       });
 
+      // Contagem de usuários conectados ao mesmo tempo
+      socket.on('user_count', (data) => {
+        updateUserCount(data.connected_users);
+      });
+
     } catch(e) {
       console.log('Socket.IO não disponível, usando modo offline');
       isOnline = false;
     }
+  }
+
+  function updateUserCount(count) {
+    const el = document.getElementById('userCount');
+    if (!el) return;
+    const label = count === 1 ? '1 usuário conectado' : `${count} usuários conectados`;
+    el.textContent = '🟢 ' + label;
   }
 
   function emitIfOnline(event, data) {
@@ -824,8 +858,8 @@
   // ===== EXPORTAÇÃO =====
   let lastExportContent = '';
 
-  async function exportFile() {
-    if (approvedStore.size === 0) { showToast('Nenhuma notícia aprovada'); return; }
+  async function exportFile(silent) {
+    if (approvedStore.size === 0) { if (!silent) showToast('Nenhuma notícia aprovada'); return; }
     const path = document.getElementById('pathInput').value;
     const warningEl = document.getElementById('exportWarning');
     warningEl.style.display = 'none';
@@ -843,20 +877,68 @@
         if (data.warning) {
           warningEl.style.display = 'block';
           warningEl.innerHTML = `⚠️ ${data.warning}<br><br><strong>Arquivo salvo em:</strong> ${data.path}<br><small>Copie o arquivo manualmente para o destino desejado.</small>`;
-        } else {
+        } else if (!silent) {
           showToast(`Arquivo salvo em: ${data.path}`);
         }
       } else if (data.status === 'fallback') {
         lastExportContent = data.content;
         warningEl.style.display = 'block';
         warningEl.innerHTML = `⚠️ ${data.message}<br><br><strong>Use o botão "⬇ Baixar" acima para salvar o arquivo manualmente.</strong><br><small>Erros: ${(data.errors || []).join('; ')}</small>`;
-        showToast('Erro de permissão — use o botão Baixar');
-      } else {
+        if (!silent) showToast('Erro de permissão — use o botão Baixar');
+      } else if (!silent) {
         showToast('Erro: ' + data.message);
       }
     } catch (e) { 
-      showToast('Erro ao exportar'); 
+      if (!silent) showToast('Erro ao exportar'); 
       console.error(e);
+    }
+  }
+
+  // ===== AUTO-EXPORTAÇÃO AGENDADA =====
+  let autoExportInterval = null;
+  function toggleAutoExport() {
+    const on = document.getElementById('autoExportEnabled').checked;
+    if (autoExportInterval) { clearInterval(autoExportInterval); autoExportInterval = null; }
+    if (on) {
+      const minutes = parseInt(document.getElementById('autoExportMinutes').value, 10) || 5;
+      exportFile(true);
+      autoExportInterval = setInterval(() => exportFile(true), minutes * 60 * 1000);
+      showToast(`Auto-exportação ativada (a cada ${minutes} min)`);
+    } else {
+      showToast('Auto-exportação desativada');
+    }
+  }
+
+  // ===== HISTÓRICO DE EXPORTAÇÕES =====
+  let exportLogVisible = false;
+  async function toggleExportLog() {
+    exportLogVisible = !exportLogVisible;
+    const panel = document.getElementById('exportLogPanel');
+    panel.style.display = exportLogVisible ? 'block' : 'none';
+    if (exportLogVisible) await loadExportLog();
+  }
+
+  async function loadExportLog() {
+    const panel = document.getElementById('exportLogPanel');
+    panel.innerHTML = '<div style="padding:12px; color:#999;">Carregando...</div>';
+    try {
+      const r = await fetch('/api/export-log');
+      const log = await r.json();
+      if (!log.length) {
+        panel.innerHTML = '<div style="padding:12px; color:#999;">Nenhuma exportação registrada ainda</div>';
+        return;
+      }
+      panel.innerHTML = log.map(entry => {
+        const dt = new Date(entry.date).toLocaleString('pt-BR');
+        const warn = entry.warning ? `<div style="color:#92400e; font-size:11px;">⚠️ ${escapeHtml(entry.warning)}</div>` : '';
+        return `<div style="padding:8px 12px; border-bottom:1px solid #f0f0f0; font-size:12px;">
+          <div style="display:flex; justify-content:space-between;"><strong>${dt}</strong><span style="color:#999;">${entry.news_count} notícia(s)</span></div>
+          <div style="color:#666; word-break:break-all;">${escapeHtml(entry.path)}</div>
+          ${warn}
+        </div>`;
+      }).join('');
+    } catch (e) {
+      panel.innerHTML = '<div style="padding:12px; color:#c00;">Erro ao carregar histórico</div>';
     }
   }
 
@@ -1021,6 +1103,25 @@
       loadNews();
       showToast('Feed adicionado com sucesso!');
     });
+  }
+
+  // ===== TESTAR FEED RSS ANTES DE ADICIONAR =====
+  async function testFeed(urlInputId) {
+    const url = document.getElementById(urlInputId).value.trim();
+    if (!url) { showToast('Digite a URL do feed para testar'); return; }
+    showToast('Testando feed...');
+    try {
+      const r = await fetch('/api/test-feed?url=' + encodeURIComponent(url));
+      const data = await r.json();
+      if (data.status === 'ok') {
+        const exemplo = data.sample && data.sample.length ? ` — ex: "${data.sample[0]}"` : '';
+        showToast(`✓ Feed OK: ${data.count} notícia(s) encontrada(s)${exemplo}`);
+      } else {
+        showToast(`✕ Falha no feed: ${data.message}`);
+      }
+    } catch (e) {
+      showToast('Erro ao testar o feed');
+    }
   }
 
   function showToast(msg) {
