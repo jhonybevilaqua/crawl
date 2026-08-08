@@ -1,1 +1,1036 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRAWL TV EVANGELIZAR</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f5f5f5; color: #111; padding: 20px; }
+  .container { max-width: 960px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 12px; border: 1px solid #e0e0e0; padding: 20px; margin-bottom: 20px; }
+  .card-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+  .quotes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .quote-card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 14px; background: #fafafa; }
+  .quote-label { font-size: 12px; color: #666; margin-bottom: 4px; }
+  .quote-value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .quote-var { font-size: 13px; margin-top: 4px; font-weight: 500; }
+  .var-up { color: #16a34a; }
+  .var-down { color: #dc2626; }
+  .var-flat { color: #666; }
+  .quote-source { font-size: 10px; color: #888; margin-top: 2px; }
 
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 14px; font-weight: 500; transition: all .15s; }
+  .btn:hover { background: #f0f0f0; }
+  .btn-primary { background: #111; color: #fff; border-color: #111; }
+  .btn-primary:hover { opacity: .9; }
+  .btn-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+  .btn-danger:hover { opacity: .9; }
+  .path-input { flex: 1; min-width: 240px; padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
+  .path-input:focus { outline: none; border-color: #111; }
+
+  .news-list { border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
+  .news-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #eee; transition: background .15s; }
+  .news-item:last-child { border-bottom: none; }
+  .news-item:hover { background: #fafafa; }
+  .news-item.approved { background: #f0fdf4; }
+  .news-item.rejected { opacity: .4; }
+  .news-check { margin-top: 2px; width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: #111; }
+  .news-text { flex: 1; font-size: 15px; line-height: 22px; }
+  .news-source { font-size: 12px; color: #999; margin-top: 2px; }
+  .news-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .btn-icon { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .15s; }
+  .btn-icon:hover { background: #f5f5f5; }
+  .btn-icon.approve-active { background: #dcfce7; border-color: #16a34a; color: #16a34a; }
+  .btn-icon.reject-active { background: #fee2e2; border-color: #dc2626; color: #dc2626; }
+
+  .preview-box { border: 1px solid #e0e0e0; border-radius: 10px; padding: 14px; background: #fafafa; font-family: "SF Mono", Monaco, "Cascadia Code", monospace; font-size: 13px; line-height: 20px; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; color: #444; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+  .badge-ok { background: #dcfce7; color: #16a34a; }
+  .badge-warn { background: #fee2e2; color: #dc2626; }
+  .badge-info { background: #f3f4f6; color: #666; }
+
+  .stats { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .refresh-btn { font-size: 13px; color: #666; cursor: pointer; background: none; border: none; text-decoration: underline; }
+
+  .config-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .config-row input { flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; }
+  .config-row button { padding: 6px 12px; font-size: 12px; }
+  .feeds-list { margin-bottom: 10px; }
+  .feed-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: #f3f4f6; font-size: 12px; margin: 0 6px 6px 0; }
+  .feed-tag button { background: none; border: none; cursor: pointer; color: #999; font-size: 14px; line-height: 1; }
+
+  .manual-quote { display: grid; grid-template-columns: 1fr 100px 100px 80px; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .manual-quote input { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+  .tab { padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; background: transparent; }
+  .tab.active { background: #111; color: #fff; }
+
+  .loading { display: inline-block; width: 14px; height: 14px; border: 2px solid #e0e0e0; border-top-color: #111; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; margin-left: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; background: #111; color: #fff; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; }
+
+  .cat-geral { background: #f3f4f6; color: #374151; }
+  .cat-economia { background: #dbeafe; color: #1e40af; }
+  .cat-politica { background: #fee2e2; color: #991b1b; }
+  .cat-agronegocio { background: #dcfce7; color: #166534; }
+  .cat-ciencia { background: #f3e8ff; color: #6b21a8; }
+  .cat-tecnologia { background: #fef3c7; color: #92400e; }
+  .cat-filter { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; user-select: none; }
+  .cat-filter:hover { background: #f9f9f9; }
+  .cat-filter.active { background: #111; color: #fff; border-color: #111; }
+  .cat-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .news-cat { margin-bottom: 4px; }
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 12px; border-top: 1px solid #eee; }
+  .page-btn { min-width: 32px; height: 32px; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .page-btn:hover { background: #f5f5f5; }
+  .page-btn.active { background: #111; color: #fff; border-color: #111; }
+  .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .page-info { font-size: 12px; color: #666; margin: 0 8px; }
+  .quick-add-feed { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; padding: 12px; background: #fafafa; border-radius: 10px; border: 1px dashed #ccc; }
+  .quick-add-feed input { padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 13px; }
+  .quick-add-feed input:focus { outline: none; border-color: #111; }
+  .quick-add-feed .btn { padding: 8px 16px; }
+
+  .search-box { padding: 8px 14px; border-radius: 10px; border: 1px solid #ccc; font-size: 14px; min-width: 220px; }
+  .search-box:focus { outline: none; border-color: #111; }
+  .auto-refresh { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #666; }
+  .auto-refresh input { accent-color: #111; }
+
+  .approved-list { border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; max-height: 300px; overflow-y: auto; }
+  .approved-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #eee; background: #f0fdf4; cursor: grab; transition: all .15s; }
+  .approved-item:last-child { border-bottom: none; }
+  .approved-item:hover { background: #dcfce7; }
+  .approved-item.dragging { opacity: .5; background: #bbf7d0; }
+  .drag-handle { color: #999; cursor: grab; font-size: 16px; user-select: none; }
+  .approved-num { font-size: 12px; font-weight: 600; color: #16a34a; min-width: 24px; text-align: center; }
+  .approved-text { flex: 1; font-size: 14px; }
+  .approved-remove { width: 26px; height: 26px; border-radius: 6px; border: 1px solid #dc2626; background: #fee2e2; color: #dc2626; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+  .approved-remove:hover { background: #fecaca; }
+
+  .char-counter { font-size: 12px; color: #666; text-align: right; margin-top: 6px; }
+  .char-counter.warn { color: #dc2626; font-weight: 600; }
+  .char-counter.ok { color: #16a34a; }
+
+  .alert-box { padding: 10px 14px; border-radius: 8px; background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; font-size: 13px; margin-bottom: 12px; display: none; }
+  .alert-box.show { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+    <h1 style="font-size:22px; font-weight:600;">CRAWL TV EVANGELIZAR</h1>
+    <span id="lastUpdate" style="font-size:12px; color:#999;">Atualizado: --</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('main')">Painel Principal</button>
+    <button class="tab" onclick="showTab('config')">Configurações</button>
+  </div>
+
+  <!-- ABA PRINCIPAL -->
+  <div id="tab-main">
+    <div class="card">
+      <div class="section-header">
+        <div class="card-title">Cotações</div>
+        <button class="refresh-btn" onclick="loadQuotes()">Atualizar cotações</button>
+      </div>
+      <div class="alert-box" id="quoteAlert">
+        ⚠️ Não foi possível buscar cotações automáticas. Os valores exibidos são do modo manual ou do último histórico disponível.
+      </div>
+      <div class="quotes-grid" id="quotes"></div>
+      <div style="margin-top:12px; font-size:12px; color:#999;">
+        Modo: <span id="quoteMode">automático</span> | 
+        <label style="cursor:pointer;"><input type="checkbox" id="manualMode" onchange="toggleManualMode()"> Usar cotações manuais</label>
+        <span class="auto-refresh" style="margin-left:16px;">
+          <input type="checkbox" id="autoRefreshQuotes" onchange="toggleAutoRefresh()">
+          <label for="autoRefreshQuotes">Auto-atualizar cotações (5min)</label>
+        </span>
+      </div>
+      <div id="manualQuotesPanel" style="display:none; margin-top:12px;">
+        <div style="font-size:13px; font-weight:500; margin-bottom:8px;">Editar cotações:</div>
+        <div id="manualQuotesInputs"></div>
+        <button class="btn btn-primary" style="margin-top:8px;" onclick="saveManualQuotes()">Salvar cotações manuais</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-header">
+        <div class="card-title">Feed de Notícias</div>
+        <div class="stats" id="stats"></div>
+      </div>
+
+      <div class="quick-add-feed">
+        <input type="text" id="quickFeedUrl" placeholder="URL do feed RSS" style="flex:2;">
+        <input type="text" id="quickFeedName" placeholder="Nome" style="flex:1;">
+        <input type="text" id="quickFeedCat" placeholder="Categoria" style="flex:1;" value="Economia">
+        <button class="btn btn-primary" onclick="quickAddFeed()">+ Adicionar feed</button>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+        <input type="text" class="search-box" id="searchInput" placeholder="🔍 Buscar notícia..." oninput="filterNews()">
+      </div>
+
+      <div style="font-size:12px; color:#666; margin-bottom:6px;">Filtrar por categoria:</div>
+      <div class="cat-filters" id="catFilters"></div>
+
+      <div class="toolbar">
+        <button class="btn" onclick="selectAll()">Selecionar todas</button>
+        <button class="btn" onclick="deselectAll()">Limpar seleção</button>
+        <button class="btn btn-primary" onclick="approveSelected()">Aprovar selecionadas</button>
+        <button class="btn btn-danger" onclick="rejectSelected()">Rejeitar selecionadas</button>
+        <button class="btn" style="border-color:#dc2626; color:#dc2626;" onclick="clearAllApprovals()">Limpar aprovações</button>
+        <button class="refresh-btn" style="margin-left:auto;" onclick="loadNews()">Atualizar feed</button>
+      </div>
+
+      <div class="news-list" id="news"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-header">
+        <div class="card-title">Notícias Aprovadas — Ordem do Crawl</div>
+        <div style="font-size:12px; color:#666;">Arraste para reordenar. Clique em ✕ para remover.</div>
+      </div>
+      <div class="approved-list" id="approvedList">
+        <div style="padding:20px; color:#999; text-align:center;">Nenhuma notícia aprovada ainda</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Exportação para GC</div>
+      <div style="font-size:13px; color:#666; margin-bottom:10px;">Caminho do arquivo TXT (será substituído automaticamente)</div>
+      <div class="toolbar">
+        <input class="path-input" id="pathInput" value="C:\\GC\\crawl\\noticias_crawl.txt" placeholder="Caminho completo do .txt">
+        <button class="btn btn-primary" onclick="exportFile()">Exportar TXT</button>
+        <button class="btn" onclick="downloadFile()" title="Baixa o arquivo pelo navegador">⬇ Baixar</button>
+      </div>
+      <div id="exportWarning" style="display:none; margin-top:10px; padding:10px 14px; border-radius:8px; background:#fef3c7; border:1px solid #fbbf24; color:#92400e; font-size:13px;"></div>
+      <div style="font-size:13px; color:#666; margin-top:12px; margin-bottom:8px;">Preview do arquivo gerado:</div>
+      <div class="preview-box" id="preview">(NENHUMA NOTÍCIA APROVADA AINDA)</div>
+      <div class="char-counter" id="charCounter"></div>
+    </div>
+  </div>
+
+  <!-- ABA CONFIG -->
+  <div id="tab-config" style="display:none;">
+    <div class="card">
+      <div class="card-title">Feeds RSS</div>
+      <div class="feeds-list" id="feedsList"></div>
+      <div class="config-row">
+        <input type="text" id="newFeedUrl" placeholder="URL do feed RSS">
+        <input type="text" id="newFeedName" placeholder="Nome" style="flex:.3;">
+        <input type="text" id="newFeedCat" placeholder="Categoria" style="flex:.2;" value="Economia">
+        <button class="btn btn-primary" onclick="addFeed()">Adicionar</button>
+      </div>
+      <button class="btn" style="margin-top:8px;" onclick="saveFeeds()">Salvar feeds</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Categorias ativas</div>
+      <div style="font-size:12px; color:#666; margin-bottom:8px;">Marque as categorias que serão buscadas automaticamente:</div>
+      <div id="configCatFilters" style="display:flex; gap:8px; flex-wrap: wrap; margin-bottom:10px;"></div>
+      <button class="btn btn-primary" onclick="saveActiveCategories()">Salvar categorias ativas</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Caminho padrão de exportação</div>
+      <div class="config-row">
+        <input type="text" id="defaultPath" class="path-input" value="C:\\GC\\crawl\\noticias_crawl.txt">
+        <button class="btn btn-primary" onclick="saveDefaultPath()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let newsData = [];
+  let quotesData = [];
+  let config = {};
+  let currentPage = 1;
+  let perPage = 10;
+  let totalPages = 1;
+  let totalItems = 0;
+  let approvedStore = new Set();
+  let rejectedStore = new Set();
+  let selectedStore = new Set();
+  let approvedOrder = [];
+  let allCategories = [];
+  let activeCategories = new Set();
+  let autoRefreshInterval = null;
+  let socket = null;
+  let isOnline = false;
+
+  // ===== LOCALSTORAGE =====
+  function saveStorage() {
+    localStorage.setItem('crawl_approved', JSON.stringify(Array.from(approvedStore)));
+    localStorage.setItem('crawl_rejected', JSON.stringify(Array.from(rejectedStore)));
+    localStorage.setItem('crawl_approved_order', JSON.stringify(approvedOrder));
+  }
+
+  function loadStorage() {
+    try {
+      const app = JSON.parse(localStorage.getItem('crawl_approved') || '[]');
+      const rej = JSON.parse(localStorage.getItem('crawl_rejected') || '[]');
+      const order = JSON.parse(localStorage.getItem('crawl_approved_order') || '[]');
+      approvedStore = new Set(app);
+      rejectedStore = new Set(rej);
+      approvedOrder = order.filter(t => approvedStore.has(t));
+    } catch(e) { console.error(e); }
+  }
+
+  // ===== AUTO-ATUALIZAÇÃO DE COTAÇÕES =====
+  function toggleAutoRefresh() {
+    const on = document.getElementById('autoRefreshQuotes').checked;
+    if (on) {
+      loadQuotes();
+      autoRefreshInterval = setInterval(() => { loadQuotes(); }, 5 * 60 * 1000);
+      showToast('Auto-atualização de cotações ativada (5min)');
+    } else {
+      if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+      showToast('Auto-atualização desativada');
+    }
+  }
+
+  async function init() {
+    await loadConfig();
+    loadStorage();
+    initSocket();
+    loadQuotes();
+    loadNews(1);
+  }
+
+  // ===== SOCKET.IO — SINCRONIZAÇÃO ONLINE =====
+  function initSocket() {
+    try {
+      socket = io();
+
+      socket.on('connect', () => {
+        isOnline = true;
+        console.log('Conectado ao servidor (modo online)');
+      });
+
+      socket.on('disconnect', () => {
+        isOnline = false;
+        console.log('Desconectado do servidor (modo offline)');
+      });
+
+      // Recebe estado completo ao conectar
+      socket.on('sync_state', (data) => {
+        approvedStore = new Set(data.approved);
+        rejectedStore = new Set(data.rejected);
+        approvedOrder = data.approved.filter(t => approvedStore.has(t));
+        renderNews();
+        updateApprovedList();
+        updateStats();
+        updatePreview();
+      });
+
+      // Recebe atualizações em tempo real de outros usuários
+      socket.on('state_update', (data) => {
+        approvedStore = new Set(data.approved);
+        rejectedStore = new Set(data.rejected);
+        approvedOrder = data.approved.filter(t => approvedStore.has(t));
+        renderNews();
+        updateApprovedList();
+        updateStats();
+        updatePreview();
+        // Salva no localStorage também (backup)
+        saveStorage();
+      });
+
+    } catch(e) {
+      console.log('Socket.IO não disponível, usando modo offline');
+      isOnline = false;
+    }
+  }
+
+  function emitIfOnline(event, data) {
+    if (isOnline && socket) {
+      socket.emit(event, data);
+    }
+  }
+
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-main').style.display = name === 'main' ? 'block' : 'none';
+    document.getElementById('tab-config').style.display = name === 'config' ? 'block' : 'none';
+  }
+
+  async function loadConfig() {
+    try {
+      const r = await fetch('/api/config');
+      config = await r.json();
+      document.getElementById('pathInput').value = config.export_path || '';
+      document.getElementById('defaultPath').value = config.export_path || '';
+      const feeds = config.rss_feeds || [];
+      allCategories = [...new Set(feeds.map(f => f.category || 'Geral').filter(Boolean))];
+      activeCategories = new Set(config.active_categories || allCategories);
+      renderCatFilters();
+      renderFeeds();
+      if (config.commodity_mode === 'manual') {
+        document.getElementById('manualMode').checked = true;
+        toggleManualMode();
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  // ===== COTAÇÕES =====
+  async function loadQuotes() {
+    const el = document.getElementById('quotes');
+    const alertBox = document.getElementById('quoteAlert');
+    alertBox.classList.remove('show');
+    el.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px;"><span class="loading"></span> Buscando cotações...</div>';
+    try {
+      const r = await fetch('/api/quotes');
+      quotesData = await r.json();
+      const hasAuto = quotesData.some(q => q.source && q.source.includes('CEPEA'));
+      const isManual = document.getElementById('manualMode').checked;
+      if (!hasAuto && !isManual && quotesData.length > 0) {
+        alertBox.classList.add('show');
+      }
+      renderQuotes();
+      updatePreview();
+      document.getElementById('lastUpdate').textContent = 'Atualizado: ' + new Date().toLocaleTimeString('pt-BR');
+    } catch (e) { 
+      showToast('Erro ao carregar cotações'); 
+      alertBox.classList.add('show');
+    }
+  }
+
+  function renderQuotes() {
+    const el = document.getElementById('quotes');
+    if (!quotesData.length) { el.innerHTML = '<div style="grid-column:1/-1; color:#999;">Nenhuma cotação disponível</div>'; return; }
+    el.innerHTML = quotesData.map(q => {
+      const diff = q.value - q.prev;
+      const pct = q.prev ? ((diff / q.prev) * 100).toFixed(2) : '0,00';
+      const isUp = diff > 0.01;
+      const isFlat = Math.abs(diff) <= 0.01;
+      const arrow = isUp ? '▲' : isFlat ? '■' : '▼';
+      const cls = isUp ? 'var-up' : isFlat ? 'var-flat' : 'var-down';
+      const sign = diff > 0 ? '+' : '';
+      const val = q.value.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const diffStr = diff.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const pctStr = parseFloat(pct).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const source = q.source ? `<div class="quote-source">Fonte: ${escapeHtml(q.source)}</div>` : '';
+      return `<div class="quote-card">
+        <div class="quote-label">${q.label}</div>
+        <div class="quote-value">${q.unit} ${val}</div>
+        <div class="quote-var ${cls}">${arrow} ${sign}${diffStr} (${sign}${pctStr}%)</div>
+        ${source}
+      </div>`;
+    }).join('');
+    renderManualInputs();
+  }
+
+  function toggleManualMode() {
+    const on = document.getElementById('manualMode').checked;
+    document.getElementById('manualQuotesPanel').style.display = on ? 'block' : 'none';
+    document.getElementById('quoteMode').textContent = on ? 'manual' : 'automático';
+    if (on) renderManualInputs();
+  }
+
+  function renderManualInputs() {
+    const defs = [
+      {label:'Dólar', val:5.85, prev:5.82},
+      {label:'Euro', val:6.42, prev:6.45},
+      {label:'Soja (saca 60kg)', val:142.50, prev:141.80},
+      {label:'Milho (saca 60kg)', val:68.30, prev:68.30},
+      {label:'Trigo (saca 60kg)', val:95.00, prev:93.50},
+      {label:'Boi gordo (@)', val:298.00, prev:301.50}
+    ];
+    const current = quotesData.length ? quotesData : defs.map(d => ({...d, unit:'R$', type:'commodity'}));
+    document.getElementById('manualQuotesInputs').innerHTML = current.map((q,i) => `
+      <div class="manual-quote">
+        <input value="${q.label}" id="mq-name-${i}" placeholder="Nome">
+        <input value="${q.value}" id="mq-val-${i}" placeholder="Valor" type="number" step="0.01">
+        <input value="${q.prev}" id="mq-prev-${i}" placeholder="Anterior" type="number" step="0.01">
+        <input value="${q.unit || 'R$'}" id="mq-unit-${i}" placeholder="Unidade" style="width:60px;">
+      </div>
+    `).join('');
+  }
+
+  async function saveManualQuotes() {
+    const inputs = document.querySelectorAll('.manual-quote');
+    const quotes = {};
+    inputs.forEach((row, i) => {
+      const name = document.getElementById(`mq-name-${i}`).value;
+      if (!name) return;
+      quotes[name] = {
+        value: parseFloat(document.getElementById(`mq-val-${i}`).value) || 0,
+        prev: parseFloat(document.getElementById(`mq-prev-${i}`).value) || 0,
+        unit: document.getElementById(`mq-unit-${i}`).value || 'R$',
+        type: 'commodity'
+      };
+    });
+    await fetch('/api/save-quotes', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({quotes, mode: document.getElementById('manualMode').checked ? 'manual' : 'auto'})
+    });
+    showToast('Cotações manuais salvas');
+    loadQuotes();
+  }
+
+  // ===== NOTÍCIAS =====
+  async function loadNews(page = 1) {
+    currentPage = page;
+    const el = document.getElementById('news');
+    el.innerHTML = '<div style="padding:20px; text-align:center;"><span class="loading"></span> Buscando feeds RSS...</div>';
+    try {
+      const r = await fetch(`/api/news?page=${page}&per_page=${perPage}`);
+      const data = await r.json();
+      totalItems = data.total;
+      totalPages = data.pages;
+      newsData = data.items.map((n, i) => ({...n, status: 'pending', uid: (page-1)*perPage + i}));
+      newsData.forEach(n => {
+        if (approvedStore.has(n.title)) n.status = 'approved';
+        else if (rejectedStore.has(n.title)) n.status = 'rejected';
+      });
+      renderNews();
+      renderPagination();
+      setTimeout(() => {
+        newsData.forEach(n => {
+          if (selectedStore.has(n.uid)) {
+            const cb = document.getElementById(`chk-${n.uid}`);
+            if (cb) cb.checked = true;
+          }
+        });
+      }, 10);
+    } catch (e) { showToast('Erro ao carregar notícias'); }
+  }
+
+  function getCatClass(cat) {
+    const map = {
+      'economia': 'cat-economia',
+      'política': 'cat-politica',
+      'politica': 'cat-politica',
+      'agronegócio': 'cat-agronegocio',
+      'agronegocio': 'cat-agronegocio',
+      'ciência': 'cat-ciencia',
+      'ciencia': 'cat-ciencia',
+      'tecnologia': 'cat-tecnologia'
+    };
+    return map[(cat || '').toLowerCase()] || 'cat-geral';
+  }
+
+  function renderNews() {
+    const el = document.getElementById('news');
+    if (!newsData.length) { el.innerHTML = '<div style="padding:20px; color:#999;">Nenhuma notícia encontrada. Verifique se alguma categoria está ativa.</div>'; return; }
+    el.innerHTML = newsData.map(n => {
+      const cls = n.status === 'approved' ? 'approved' : n.status === 'rejected' ? 'rejected' : '';
+      const appCls = n.status === 'approved' ? 'approve-active' : '';
+      const rejCls = n.status === 'rejected' ? 'reject-active' : '';
+      const catClass = getCatClass(n.category);
+      const isSelected = selectedStore.has(n.uid);
+      return `<div class="news-item ${cls}" id="news-${n.uid}">
+        <input type="checkbox" class="news-check" id="chk-${n.uid}" ${isSelected ? 'checked' : ''} onchange="toggleSelect(${n.uid})">
+        <div class="news-text">
+          <div class="news-cat"><span class="cat-tag ${catClass}">${escapeHtml(n.category || 'Geral')}</span></div>
+          <div>${escapeHtml(n.title)}</div>
+          <div class="news-source">${escapeHtml(n.source)}</div>
+        </div>
+        <div class="news-actions">
+          <button class="btn-icon ${appCls}" onclick="setStatus(${n.uid}, 'approved')" title="Aprovar">✓</button>
+          <button class="btn-icon ${rejCls}" onclick="setStatus(${n.uid}, 'rejected')" title="Rejeitar">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    updateStats();
+    updatePreview();
+  }
+
+  function escapeHtml(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+  }
+
+  function setStatus(uid, status) {
+    const n = newsData.find(x => x.uid === uid);
+    if (!n) return;
+    const title = n.title;
+    if (status === 'approved') {
+      if (approvedStore.has(title)) {
+        approvedStore.delete(title);
+        rejectedStore.delete(title);
+        n.status = 'pending';
+        emitIfOnline('remove_item', {title});
+      } else {
+        approvedStore.add(title);
+        rejectedStore.delete(title);
+        n.status = 'approved';
+        emitIfOnline('approve_item', {title});
+      }
+    } else if (status === 'rejected') {
+      if (rejectedStore.has(title)) {
+        rejectedStore.delete(title);
+        approvedStore.delete(title);
+        n.status = 'pending';
+        emitIfOnline('remove_item', {title});
+      } else {
+        rejectedStore.add(title);
+        approvedStore.delete(title);
+        n.status = 'rejected';
+        emitIfOnline('reject_item', {title});
+      }
+    }
+    saveStorage();
+    renderNews();
+    updateStats();
+    updatePreview();
+    updateApprovedList();
+  }
+
+  function toggleSelect(uid) {
+    const cb = document.getElementById(`chk-${uid}`);
+    if (cb && cb.checked) {
+      selectedStore.add(uid);
+    } else {
+      selectedStore.delete(uid);
+    }
+  }
+
+  function getSelectedUids() {
+    return newsData.filter(n => document.getElementById(`chk-${n.uid}`)?.checked).map(n => n.uid);
+  }
+
+  function selectAll() {
+    newsData.forEach(n => {
+      selectedStore.add(n.uid);
+      const c = document.getElementById(`chk-${n.uid}`);
+      if(c) c.checked = true;
+    });
+  }
+
+  function deselectAll() {
+    newsData.forEach(n => {
+      selectedStore.delete(n.uid);
+      const c = document.getElementById(`chk-${n.uid}`);
+      if(c) c.checked = false;
+    });
+  }
+
+  function approveSelected() {
+    getSelectedUids().forEach(uid => {
+      const n = newsData.find(x => x.uid === uid);
+      if(n) {
+        approvedStore.add(n.title);
+        rejectedStore.delete(n.title);
+        n.status = 'approved';
+        emitIfOnline('approve_item', {title: n.title});
+      }
+    });
+    selectedStore.clear();
+    saveStorage();
+    renderNews();
+    updateApprovedList();
+    updatePreview();
+    showToast(`${approvedStore.size} notícia(s) aprovada(s)`);
+  }
+
+  function rejectSelected() {
+    getSelectedUids().forEach(uid => {
+      const n = newsData.find(x => x.uid === uid);
+      if(n) {
+        rejectedStore.add(n.title);
+        approvedStore.delete(n.title);
+        n.status = 'rejected';
+        emitIfOnline('reject_item', {title: n.title});
+      }
+    });
+    selectedStore.clear();
+    saveStorage();
+    renderNews();
+    updateApprovedList();
+    updatePreview();
+    showToast(`${rejectedStore.size} notícia(s) rejeitada(s)`);
+  }
+
+  function clearAllApprovals() {
+    if (!confirm('Tem certeza que deseja limpar TODAS as aprovações e rejeições?')) return;
+    approvedStore.clear();
+    rejectedStore.clear();
+    selectedStore.clear();
+    approvedOrder = [];
+    newsData.forEach(n => n.status = 'pending');
+    emitIfOnline('clear_all', {});
+    saveStorage();
+    renderNews();
+    updateApprovedList();
+    updatePreview();
+    showToast('Todas as aprovações foram limpas');
+  }
+
+  function updateStats() {
+    const approved = approvedStore.size;
+    const rejected = rejectedStore.size;
+    document.getElementById('stats').innerHTML = `
+      <span class="badge badge-ok">${approved} aprovadas</span>
+      <span class="badge badge-warn">${rejected} rejeitadas</span>
+      <span class="badge badge-info">${totalItems} total</span>
+    `;
+  }
+
+  // ===== FILTRO POR PALAVRA-CHAVE =====
+  function filterNews() {
+    const term = document.getElementById('searchInput').value.trim().toLowerCase();
+    if (!term) {
+      renderNews();
+      return;
+    }
+    const filtered = newsData.filter(n => 
+      n.title.toLowerCase().includes(term) || 
+      (n.source && n.source.toLowerCase().includes(term)) ||
+      (n.category && n.category.toLowerCase().includes(term))
+    );
+    renderNewsList(filtered);
+  }
+
+  function renderNewsList(list) {
+    const el = document.getElementById('news');
+    if (!list.length) { 
+      el.innerHTML = '<div style="padding:20px; color:#999;">Nenhuma notícia encontrada para este termo.</div>'; 
+      return; 
+    }
+    el.innerHTML = list.map(n => {
+      const cls = n.status === 'approved' ? 'approved' : n.status === 'rejected' ? 'rejected' : '';
+      const appCls = n.status === 'approved' ? 'approve-active' : '';
+      const rejCls = n.status === 'rejected' ? 'reject-active' : '';
+      const catClass = getCatClass(n.category);
+      const isSelected = selectedStore.has(n.uid);
+      return `<div class="news-item ${cls}" id="news-${n.uid}">
+        <input type="checkbox" class="news-check" id="chk-${n.uid}" ${isSelected ? 'checked' : ''} onchange="toggleSelect(${n.uid})">
+        <div class="news-text">
+          <div class="news-cat"><span class="cat-tag ${catClass}">${escapeHtml(n.category || 'Geral')}</span></div>
+          <div>${escapeHtml(n.title)}</div>
+          <div class="news-source">${escapeHtml(n.source)}</div>
+        </div>
+        <div class="news-actions">
+          <button class="btn-icon ${appCls}" onclick="setStatus(${n.uid}, 'approved')" title="Aprovar">✓</button>
+          <button class="btn-icon ${rejCls}" onclick="setStatus(${n.uid}, 'rejected')" title="Rejeitar">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ===== LISTA DE APROVADAS COM DRAG & DROP =====
+  function updateApprovedList() {
+    const el = document.getElementById('approvedList');
+    if (approvedStore.size === 0) {
+      el.innerHTML = '<div style="padding:20px; color:#999; text-align:center;">Nenhuma notícia aprovada ainda</div>';
+      return;
+    }
+    const currentSet = Array.from(approvedStore);
+    approvedOrder = approvedOrder.filter(t => approvedStore.has(t));
+    currentSet.forEach(t => { if (!approvedOrder.includes(t)) approvedOrder.push(t); });
+
+    el.innerHTML = approvedOrder.map((title, idx) => `
+      <div class="approved-item" draggable="true" data-title="${escapeHtml(title)}" data-idx="${idx}">
+        <span class="drag-handle">☰</span>
+        <span class="approved-num">${idx + 1}</span>
+        <span class="approved-text">${escapeHtml(title)}</span>
+        <button class="approved-remove" onclick="removeApproved('${escapeHtml(title).replace(/'/g, "\'")}')" title="Remover">✕</button>
+      </div>
+    `).join('');
+
+    el.querySelectorAll('.approved-item').forEach(item => {
+      item.addEventListener('dragstart', handleDragStart);
+      item.addEventListener('dragover', handleDragOver);
+      item.addEventListener('drop', handleDrop);
+      item.addEventListener('dragend', handleDragEnd);
+    });
+    updatePreview();
+  }
+
+  let dragSrcEl = null;
+  function handleDragStart(e) {
+    dragSrcEl = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.idx);
+  }
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+  }
+  function handleDrop(e) {
+    e.stopPropagation();
+    if (dragSrcEl === this) return false;
+    const fromIdx = parseInt(dragSrcEl.dataset.idx);
+    const toIdx = parseInt(this.dataset.idx);
+    const item = approvedOrder.splice(fromIdx, 1)[0];
+    approvedOrder.splice(toIdx, 0, item);
+    emitIfOnline('reorder_items', {order: approvedOrder});
+    saveStorage();
+    updateApprovedList();
+    return false;
+  }
+  function handleDragEnd() {
+    this.classList.remove('dragging');
+    dragSrcEl = null;
+  }
+
+  function removeApproved(title) {
+    approvedStore.delete(title);
+    approvedOrder = approvedOrder.filter(t => t !== title);
+    emitIfOnline('remove_item', {title});
+    saveStorage();
+    updateApprovedList();
+    updatePreview();
+    renderNews();
+    updateStats();
+  }
+
+  // ===== PREVIEW E CONTADOR =====
+  function updatePreview() {
+    if (approvedStore.size === 0) {
+      document.getElementById('preview').textContent = '(NENHUMA NOTÍCIA APROVADA AINDA)';
+      updateCharCounter();
+      return;
+    }
+    const qParts = quotesData.map(q => {
+      const diff = q.value - q.prev;
+      const arrow = Math.abs(diff) < 0.01 ? '■' : diff > 0 ? '▲' : '▼';
+      const val = q.value.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      return `${q.label}: ${q.unit} ${val} ${arrow}`;
+    });
+    const order = approvedOrder.length ? approvedOrder : Array.from(approvedStore);
+    const newsLine = order.map(title => `• ${title}`).join(' ');
+    const fullLine = (qParts.join(' | ') + ' • ' + newsLine).toUpperCase();
+    document.getElementById('preview').textContent = fullLine;
+    updateCharCounter();
+  }
+
+  function updateCharCounter() {
+    const el = document.getElementById('charCounter');
+    const preview = document.getElementById('preview');
+    if (!preview || preview.textContent.includes('NENHUMA NOTÍCIA')) {
+      el.textContent = '';
+      return;
+    }
+    const len = preview.textContent.length;
+    el.className = 'char-counter ok';
+    el.textContent = `${len} caracteres`;
+  }
+
+  // ===== EXPORTAÇÃO =====
+  let lastExportContent = '';
+
+  async function exportFile() {
+    if (approvedStore.size === 0) { showToast('Nenhuma notícia aprovada'); return; }
+    const path = document.getElementById('pathInput').value;
+    const warningEl = document.getElementById('exportWarning');
+    warningEl.style.display = 'none';
+    warningEl.textContent = '';
+
+    try {
+      const r = await fetch('/api/export', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({path, news: Array.from(approvedStore).map(t => ({title: t})), quotes: quotesData})
+      });
+      const data = await r.json();
+
+      if (data.status === 'ok') {
+        lastExportContent = data.content;
+        if (data.warning) {
+          warningEl.style.display = 'block';
+          warningEl.innerHTML = `⚠️ ${data.warning}<br><br><strong>Arquivo salvo em:</strong> ${data.path}<br><small>Copie o arquivo manualmente para o destino desejado.</small>`;
+        } else {
+          showToast(`Arquivo salvo em: ${data.path}`);
+        }
+      } else if (data.status === 'fallback') {
+        lastExportContent = data.content;
+        warningEl.style.display = 'block';
+        warningEl.innerHTML = `⚠️ ${data.message}<br><br><strong>Use o botão "⬇ Baixar" acima para salvar o arquivo manualmente.</strong><br><small>Erros: ${(data.errors || []).join('; ')}</small>`;
+        showToast('Erro de permissão — use o botão Baixar');
+      } else {
+        showToast('Erro: ' + data.message);
+      }
+    } catch (e) { 
+      showToast('Erro ao exportar'); 
+      console.error(e);
+    }
+  }
+
+  function downloadFile() {
+    if (!lastExportContent && approvedStore.size === 0) {
+      showToast('Nenhuma notícia aprovada para baixar');
+      return;
+    }
+    const content = lastExportContent || document.getElementById('preview').textContent;
+    if (content.includes('NENHUMA NOTÍCIA')) {
+      showToast('Nenhuma notícia aprovada');
+      return;
+    }
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const path = document.getElementById('pathInput').value;
+    a.download = path.split('\\').pop().split('/').pop() || 'noticias_crawl.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Download iniciado pelo navegador');
+  }
+
+  // ===== PAGINAÇÃO =====
+  function renderPagination() {
+    const el = document.getElementById('pagination');
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    let html = `<span class="page-info">Página ${currentPage} de ${totalPages} (${totalItems} notícias)</span>`;
+    html += `<button class="page-btn" onclick="loadNews(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>◀</button>`;
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    if (endPage - startPage < maxVisible - 1) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+    if (startPage > 1) {
+      html += `<button class="page-btn" onclick="loadNews(1)">1</button>`;
+      if (startPage > 2) html += `<span class="page-info">...</span>`;
+    }
+    for (let i = startPage; i <= endPage; i++) {
+      html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="loadNews(${i})">${i}</button>`;
+    }
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += `<span class="page-info">...</span>`;
+      html += `<button class="page-btn" onclick="loadNews(${totalPages})">${totalPages}</button>`;
+    }
+    html += `<button class="page-btn" onclick="loadNews(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>▶</button>`;
+    el.innerHTML = html;
+  }
+
+  // ===== CONFIG =====
+  function renderCatFilters() {
+    const el = document.getElementById('catFilters');
+    if (!allCategories.length) { el.innerHTML = ''; return; }
+    el.innerHTML = allCategories.map(cat => {
+      const active = activeCategories.has(cat);
+      return `<button class="cat-filter ${active ? 'active' : ''}" onclick="toggleCatFilter('${cat}')">${active ? '✓ ' : ''}${escapeHtml(cat)}</button>`;
+    }).join('');
+  }
+
+  function toggleCatFilter(cat) {
+    if (activeCategories.has(cat)) {
+      activeCategories.delete(cat);
+    } else {
+      activeCategories.add(cat);
+    }
+    renderCatFilters();
+    saveActiveCategories();
+    loadNews();
+  }
+
+  async function saveActiveCategories() {
+    config.active_categories = Array.from(activeCategories);
+    await fetch('/api/config', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(config)
+    });
+  }
+
+  function renderFeeds() {
+    const el = document.getElementById('feedsList');
+    const elConfig = document.getElementById('configCatFilters');
+    if (!config.rss_feeds) return;
+    el.innerHTML = config.rss_feeds.map((f, i) => `
+      <span class="feed-tag">${escapeHtml(f.name || f.url)} <span style="color:#999;">(${escapeHtml(f.category || 'Geral')})</span>
+        <button onclick="removeFeed(${i})">×</button>
+      </span>
+    `).join('');
+    if (elConfig) {
+      elConfig.innerHTML = allCategories.map(cat => {
+        const active = activeCategories.has(cat);
+        return `<button class="cat-filter ${active ? 'active' : ''}" onclick="toggleCatFilter('${cat}')">${active ? '✓ ' : ''}${escapeHtml(cat)}</button>`;
+      }).join('');
+    }
+  }
+
+  function addFeed() {
+    const url = document.getElementById('newFeedUrl').value.trim();
+    const name = document.getElementById('newFeedName').value.trim() || url;
+    const category = document.getElementById('newFeedCat').value.trim() || 'Geral';
+    if (!url) return;
+    config.rss_feeds = config.rss_feeds || [];
+    config.rss_feeds.push({url, name, category});
+    if (!allCategories.includes(category)) {
+      allCategories.push(category);
+      activeCategories.add(category);
+    }
+    renderFeeds();
+    renderCatFilters();
+    document.getElementById('newFeedUrl').value = '';
+    document.getElementById('newFeedName').value = '';
+    document.getElementById('newFeedCat').value = 'Economia';
+  }
+
+  function removeFeed(i) {
+    config.rss_feeds.splice(i, 1);
+    renderFeeds();
+  }
+
+  async function saveFeeds() {
+    await fetch('/api/config', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(config)
+    });
+    showToast('Feeds salvos');
+    loadNews();
+  }
+
+  async function saveDefaultPath() {
+    config.export_path = document.getElementById('defaultPath').value;
+    await fetch('/api/config', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(config)
+    });
+    document.getElementById('pathInput').value = config.export_path;
+    showToast('Caminho padrão salvo');
+  }
+
+  function quickAddFeed() {
+    const url = document.getElementById('quickFeedUrl').value.trim();
+    const name = document.getElementById('quickFeedName').value.trim() || url;
+    const category = document.getElementById('quickFeedCat').value.trim() || 'Geral';
+    if (!url) { showToast('Digite a URL do feed'); return; }
+    config.rss_feeds = config.rss_feeds || [];
+    config.rss_feeds.push({url, name, category});
+    if (!allCategories.includes(category)) {
+      allCategories.push(category);
+      activeCategories.add(category);
+    }
+    fetch('/api/config', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(config)
+    }).then(() => {
+      document.getElementById('quickFeedUrl').value = '';
+      document.getElementById('quickFeedName').value = '';
+      document.getElementById('quickFeedCat').value = 'Economia';
+      renderFeeds();
+      renderCatFilters();
+      loadNews();
+      showToast('Feed adicionado com sucesso!');
+    });
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  init();
+</script>
+</body>
+</html>
