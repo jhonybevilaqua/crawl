@@ -2,11 +2,23 @@ from flask import Flask, send_file, jsonify, request
 from flask_socketio import SocketIO, emit
 import feedparser
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import json
 import os
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
+
+def make_session(retries=3, backoff=1.5, status_forcelist=(429, 500, 502, 503, 504)):
+    """Sessão HTTP com retry automático em falhas transitórias (timeout, 5xx, etc.)"""
+    session = requests.Session()
+    retry = Retry(total=retries, backoff_factor=backoff, status_forcelist=list(status_forcelist),
+                   allowed_methods=frozenset(['GET']))
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
 
 import sys
 
@@ -72,11 +84,17 @@ def save_history(history):
 
 def get_currency_quotes():
     quotes = []
+    history = load_history()
+    today = datetime.now().strftime('%Y-%m-%d')
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+    }
+    session = make_session()
     try:
-        resp = requests.get('https://economia.awesomeapi.com.br/last/USD-BRL,EUR-BRL', timeout=15)
+        resp = session.get('https://economia.awesomeapi.com.br/last/USD-BRL,EUR-BRL', headers=headers, timeout=20)
+        resp.raise_for_status()
         data = resp.json()
-        history = load_history()
-        today = datetime.now().strftime('%Y-%m-%d')
         for code, label in [('USDBRL', 'Dólar'), ('EURBRL', 'Euro')]:
             item = data.get(code, {})
             value = float(item.get('bid', 0))
@@ -90,8 +108,17 @@ def get_currency_quotes():
             quotes.append({"label": label, "value": value, "prev": prev, "unit": "R$", "type": "currency"})
             history[hist_key] = {"date": today, "value": value}
         save_history(history)
+        print("[OK] Moedas atualizadas via AwesomeAPI")
     except Exception as e:
-        print(f"Erro moedas: {e}")
+        print(f"[ERRO] Moedas (AwesomeAPI): {e}")
+        # Fallback: usa o último valor salvo no histórico em vez de deixar em branco
+        for label in ['Dólar', 'Euro']:
+            hist_key = label.lower()
+            if hist_key in history:
+                val = history[hist_key]['value']
+                quotes.append({"label": label, "value": val, "prev": val, "unit": "R$", "type": "currency", "source": "AwesomeAPI (último valor salvo)", "stale": True})
+        if quotes:
+            print("[INFO] Moedas: usando último valor salvo (fonte indisponível no momento)")
     return quotes
 
 def get_commodity_quotes():
@@ -106,27 +133,37 @@ def get_commodity_quotes():
         {"label": "Boi gordo (@)", "unit": "R$", "url": "https://cepea.org.br/br/indicador/boi-gordo.aspx", "table_index": 0, "col_value": 1, "col_var": 2}
     ]
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Referer': 'https://cepea.org.br/',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
     }
-    session = requests.Session()
+    session = make_session(retries=2, backoff=2, status_forcelist=(403, 429, 500, 502, 503, 504))
     for comm in commodities:
+        hist_key = comm['label'].lower().replace(' ', '_').replace('(', '').replace(')', '')
         try:
-            resp = session.get(comm['url'], headers=headers, timeout=20)
+            resp = session.get(comm['url'], headers=headers, timeout=25)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, 'html.parser')
             tables = soup.find_all('table')
-            if not tables: continue
+            if not tables:
+                raise ValueError("nenhuma tabela encontrada na página (site pode ter mudado ou bloqueado o acesso)")
             table_idx = comm.get('table_index', 0)
             if table_idx >= len(tables): table_idx = 0
             table = tables[table_idx]
             rows = table.find_all('tr')
-            if len(rows) < 2: continue
+            if len(rows) < 2:
+                raise ValueError("tabela sem linha de dados")
             data_row = rows[1]
             cells = data_row.find_all(['td', 'th'])
-            if len(cells) <= comm['col_value']: continue
+            if len(cells) <= comm['col_value']:
+                raise ValueError("colunas da tabela fora do esperado")
             value_text = cells[comm['col_value']].get_text(strip=True)
             value_text = value_text.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
             value = float(value_text)
@@ -139,7 +176,6 @@ def get_commodity_quotes():
                     var_str = var_match.group(1).replace('.', '').replace(',', '.')
                     var_pct = float(var_str) / 100
                     prev = value / (1 + var_pct)
-            hist_key = comm['label'].lower().replace(' ', '_').replace('(', '').replace(')', '')
             if hist_key in history and history[hist_key].get('date') != today:
                 prev = history[hist_key]['value']
             quotes.append({"label": comm['label'], "value": round(value, 2), "prev": round(prev, 2), "unit": comm['unit'], "type": "commodity", "source": "CEPEA"})
@@ -147,6 +183,11 @@ def get_commodity_quotes():
             print(f"[OK] {comm['label']}: R$ {value:.2f}")
         except Exception as e:
             print(f"[ERRO] {comm['label']}: {e}")
+            # Fallback: usa o último valor salvo no histórico em vez de deixar em branco
+            if hist_key in history:
+                val = history[hist_key]['value']
+                quotes.append({"label": comm['label'], "value": val, "prev": val, "unit": comm['unit'], "type": "commodity", "source": "CEPEA (último valor salvo)", "stale": True})
+                print(f"[INFO] {comm['label']}: usando último valor salvo (R$ {val})")
     save_history(history)
     return quotes
 
